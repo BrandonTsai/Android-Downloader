@@ -15,6 +15,16 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
         }
     }
+
+
+    task makeJar(type: Copy) {
+        delete 'build/libs/Android-Downloader.jar'
+        from('build/intermediates/bundles/release/')
+        into('build/libs/')
+        include('classes.jar')
+        rename ('classes.jar', 'android-downloader.jar')
+    }
+    makeJar.dependsOn(build)
 }
 
 dependencies {

@@ -64,6 +64,7 @@ public class DefaultDownloadListener implements DownloadListener {
     @Override
     public void onDownloadFailed(DownloadTask task) {
         Log.d(TAG, "Failed");
+        notificationManager.cancel(notifyID);
     }
 
     @Override

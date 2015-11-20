@@ -27,6 +27,8 @@ import javax.net.ssl.X509TrustManager;
 
 public class DownloadOperator implements Runnable {
 
+    private static final String TAG="DownloadOperator";
+
     // 100 kb
     private static final long REFRESH_INTEVAL_SIZE = 100 * 1024;
 
@@ -79,7 +81,6 @@ public class DownloadOperator implements Runnable {
             InputStream is = null;
             try {
                 conn = initConnection();
-                Log.d("X", task.getUrl());
                 conn.connect();
                 raf = buildDownloadFile();
 
@@ -141,13 +142,15 @@ public class DownloadOperator implements Runnable {
                 }
                 break;
             } catch (ConnectException e) {
-                e.printStackTrace();
                 try {
-                    Thread.sleep(3000);
+                    Thread.sleep(1000);
                     if (tryTimes > manager.getConfig().getRetryTime()) {
+                        Log.d(TAG, "retry exceed " + manager.getConfig().getRetryTime() + " times. Give up.");
                         manager.onDownloadFailed(task);
+                        e.printStackTrace();
                         break;
                     } else {
+                        Log.d(TAG, "connection retry " + tryTimes + " times");
                         tryTimes++;
                         continue;
                     }
@@ -189,8 +192,8 @@ public class DownloadOperator implements Runnable {
     private HttpsURLConnection initConnection() throws IOException {
         HttpsURLConnection conn = (HttpsURLConnection) new URL(task.getUrl()).openConnection();
         conn.setHostnameVerifier(org.apache.http.conn.ssl.SSLSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
-		conn.setConnectTimeout(60000);
-		conn.setReadTimeout(60000);
+		//conn.setConnectTimeout(60000);
+		//conn.setReadTimeout(60000);
         conn.setUseCaches(true);
         if (task.getDownloadFinishedSize() != 0) {
             conn.setRequestProperty("Range", "bytes=" + task.getDownloadFinishedSize() + "-");
