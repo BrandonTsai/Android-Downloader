@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import android.content.Context;
 import android.os.Handler;
 import android.text.TextUtils;
 import android.util.Log;
@@ -39,13 +40,15 @@ public class DownloadManager {
 
 	private ExecutorService pool;
 
-	private DownloadManager() {
-		
+	public Context context;
+
+	private DownloadManager(Context ctx) {
+		context = ctx;
 	}
 
-	public static synchronized DownloadManager getInstance() {
+	public static synchronized DownloadManager getInstance(Context ctx) {
 		if(instance == null) {
-			instance = new DownloadManager();
+			instance = new DownloadManager(ctx);
 		}
 
 		return instance;

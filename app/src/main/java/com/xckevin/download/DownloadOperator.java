@@ -4,164 +4,230 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
-import java.net.HttpURLConnection;
+import java.net.ConnectException;
 import java.net.URL;
+import java.security.SecureRandom;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.content.Context;
+import android.support.v4.app.NotificationCompat;
 import android.text.TextUtils;
+import android.util.Log;
 
+import com.xckevin.androiddownloadcomponent.R;
 import com.xckevin.download.util.FileUtil;
+
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 
 public class DownloadOperator implements Runnable {
 
-	// 100 kb
-	private static final long REFRESH_INTEVAL_SIZE = 100 * 1024;
+    // 100 kb
+    private static final long REFRESH_INTEVAL_SIZE = 100 * 1024;
 
-	private DownloadManager manager;
+    private DownloadManager manager;
 
-	private DownloadTask task;
+    private DownloadTask task;
 
-	// already try times
-	private int tryTimes;
+    // already try times
+    private int tryTimes;
 
-	private volatile boolean pauseFlag;
-	private volatile boolean stopFlag;
+    private volatile boolean pauseFlag;
+    private volatile boolean stopFlag;
 
-	private String filePath;
+    private String filePath;
 
-	DownloadOperator(DownloadManager manager, DownloadTask task) {
-		this.manager = manager;
-		this.task = task;
-		this.tryTimes = 0;
-	}
+    DownloadOperator(DownloadManager manager, DownloadTask task) {
+        this.manager = manager;
+        this.task = task;
+        this.tryTimes = 0;
+    }
 
-	void pauseDownload() {
-		if(pauseFlag) {
-			return ;
-		}
-		pauseFlag = true;
-	}
+    void pauseDownload() {
+        if (pauseFlag) {
+            return;
+        }
+        pauseFlag = true;
+    }
 
-	void resumeDownload() {
-		if(!pauseFlag) {
-			return ;
-		}
-		pauseFlag = false;
-		synchronized (this) {
-			notify();
-		}
-	}
+    void resumeDownload() {
+        if (!pauseFlag) {
+            return;
+        }
+        pauseFlag = false;
+        synchronized (this) {
+            notify();
+        }
+    }
 
-	void cancelDownload() {
-		stopFlag = true;
-		resumeDownload();
-	}
+    void cancelDownload() {
+        stopFlag = true;
+        resumeDownload();
+    }
 
-	@Override
-	public void run() {
-		do {
-			RandomAccessFile raf = null;
-			HttpURLConnection conn = null;
-			InputStream is = null;
-			try {
-				raf = buildDownloadFile();
-				conn = initConnection();
-
-				conn.connect();
-
-				task.setDownloadSavePath(filePath);
-				if(task.getDownloadTotalSize() == 0) {
-					task.setDownloadTotalSize(conn.getContentLength());
-				}
-				if(TextUtils.isEmpty(task.getMimeType())) {
-					task.setMimeType(conn.getContentType());
-				}
-				task.setStatus(DownloadTask.STATUS_RUNNING);
-				manager.onDownloadStarted(task);
+    @Override
+    public void run() {
+        do {
+            trustAllHosts();
+            RandomAccessFile raf = null;
+            HttpsURLConnection conn = null;
+            InputStream is = null;
+            try {
+                conn = initConnection();
+                Log.d("X", task.getUrl());
+                conn.connect();
+                raf = buildDownloadFile();
 
 
-				is = conn.getInputStream();
+                task.setDownloadSavePath(filePath);
+                if (task.getDownloadTotalSize() == 0) {
+                    task.setDownloadTotalSize(conn.getContentLength());
+                }
+                if (TextUtils.isEmpty(task.getMimeType())) {
+                    task.setMimeType(conn.getContentType());
+                }
+                task.setStatus(DownloadTask.STATUS_RUNNING);
+                manager.onDownloadStarted(task);
 
-				byte[] buffer = new byte[8192];
-				int count = 0;
-				long total = task.getDownloadFinishedSize();
-				long prevTime = System.currentTimeMillis();
-				long achieveSize = total;
-				while(!stopFlag && (count = is.read(buffer)) != -1) {
-					while(pauseFlag) {
-						manager.onDownloadPaused(task);
-						synchronized (this) {
-							try {
-								wait();
-							} catch (InterruptedException e) {
-								e.printStackTrace();
-								manager.onDownloadResumed(task);
-							}
-						}
-					}
 
-					raf.write(buffer, 0, count);
-					total += count;
+                is = conn.getInputStream();
 
-					long tempSize = total - achieveSize;
-					if(tempSize > REFRESH_INTEVAL_SIZE) {
-						long tempTime = System.currentTimeMillis() - prevTime;
-						long speed = tempSize * 1000 / tempTime;
-						achieveSize = total;
-						prevTime = System.currentTimeMillis();
-						task.setDownloadFinishedSize(total);
-						task.setDownloadSpeed(speed);
-						manager.updateDownloadTask(task, total, speed);
-					}
-				}
-				task.setDownloadFinishedSize(total);
+                byte[] buffer = new byte[8192];
+                int count = 0;
+                long total = task.getDownloadFinishedSize();
+                long prevTime = System.currentTimeMillis();
+                long achieveSize = total;
+                while (!stopFlag && (count = is.read(buffer)) != -1) {
+                    while (pauseFlag) {
+                        manager.onDownloadPaused(task);
+                        synchronized (this) {
+                            try {
+                                wait();
+                            } catch (InterruptedException e) {
+                                e.printStackTrace();
+                                manager.onDownloadResumed(task);
+                            }
+                        }
+                    }
 
-				if(stopFlag) {
-					manager.onDownloadCanceled(task);
-				} else {
-					manager.onDownloadSuccessed(task);
-				}
-				break;
-			} catch (IOException e) {
-				e.printStackTrace();
-				if(tryTimes > manager.getConfig().getRetryTime()) {
-					manager.onDownloadFailed(task);
-					break;
-				} else {
-					tryTimes ++;
-					continue;
-				}
-			}
-		} while(true);
-	}
+                    raf.write(buffer, 0, count);
+                    total += count;
 
-	private RandomAccessFile buildDownloadFile() throws IOException {
-		String fileName = FileUtil.getFileNameByUrl(task.getUrl());
-		File file = new File(manager.getConfig().getDownloadSavePath(), fileName);
-		if(!file.getParentFile().isDirectory() && !file.getParentFile().mkdirs()) {
-			throw new IOException("cannot create download folder");
-		}
-		if(file.exists()) {
+                    long tempSize = total - achieveSize;
+                    if (tempSize > REFRESH_INTEVAL_SIZE) {
+                        long tempTime = System.currentTimeMillis() - prevTime;
+                        long speed = tempSize * 1000 / tempTime;
+                        achieveSize = total;
+                        prevTime = System.currentTimeMillis();
+                        task.setDownloadFinishedSize(total);
+                        task.setDownloadSpeed(speed);
+                        manager.updateDownloadTask(task, total, speed);
 
-		}
-		filePath = file.getAbsolutePath();
-		RandomAccessFile raf = new RandomAccessFile(file, "rw");
-		if(task.getDownloadFinishedSize() != 0) {
-			raf.seek(task.getDownloadFinishedSize());
-		}
+                    }
+                }
 
-		return raf;
-	}
+                task.setDownloadFinishedSize(total);
 
-	private HttpURLConnection initConnection() throws IOException {
-		HttpURLConnection conn = (HttpURLConnection) new URL(task.getUrl()).openConnection();
-		conn.setConnectTimeout(30000);
-		conn.setReadTimeout(30000);
-		conn.setUseCaches(true);
-		if(task.getDownloadFinishedSize() != 0) {
-			conn.setRequestProperty("Range", "bytes=" + task.getDownloadFinishedSize() + "-");
-		}
 
-		return conn;
-	}
+                if (stopFlag) {
+                    manager.onDownloadCanceled(task);
+                } else {
+                    manager.onDownloadSuccessed(task);
+                }
+                break;
+            } catch (ConnectException e) {
+                e.printStackTrace();
+                try {
+                    Thread.sleep(3000);
+                    if (tryTimes > manager.getConfig().getRetryTime()) {
+                        manager.onDownloadFailed(task);
+                        break;
+                    } else {
+                        tryTimes++;
+                        continue;
+                    }
+                } catch (InterruptedException e1) {
+                    e1.printStackTrace();
+                }
+                continue;
+            } catch (IOException e) {
+                e.printStackTrace();
+                if (tryTimes > manager.getConfig().getRetryTime()) {
+                    manager.onDownloadFailed(task);
+                    break;
+                } else {
+                    tryTimes++;
+                    continue;
+                }
+            }
+        } while (true);
+    }
+
+    private RandomAccessFile buildDownloadFile() throws IOException {
+        String fileName = FileUtil.getFileNameByUrl(task.getUrl());
+        File file = new File(manager.getConfig().getDownloadSavePath(), fileName);
+        if (!file.getParentFile().isDirectory() && !file.getParentFile().mkdirs()) {
+            throw new IOException("cannot create download folder");
+        }
+        if (file.exists()) {
+
+        }
+        filePath = file.getAbsolutePath();
+        RandomAccessFile raf = new RandomAccessFile(file, "rw");
+        if (task.getDownloadFinishedSize() != 0) {
+            raf.seek(task.getDownloadFinishedSize());
+        }
+
+        return raf;
+    }
+
+    private HttpsURLConnection initConnection() throws IOException {
+        HttpsURLConnection conn = (HttpsURLConnection) new URL(task.getUrl()).openConnection();
+        conn.setHostnameVerifier(org.apache.http.conn.ssl.SSLSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
+		conn.setConnectTimeout(60000);
+		conn.setReadTimeout(60000);
+        conn.setUseCaches(true);
+        if (task.getDownloadFinishedSize() != 0) {
+            conn.setRequestProperty("Range", "bytes=" + task.getDownloadFinishedSize() + "-");
+        }
+
+        return conn;
+    }
+
+
+    public void trustAllHosts() {
+
+        TrustManager mTrustManager = new X509TrustManager() {
+            public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                return new java.security.cert.X509Certificate[]{};
+            }
+
+
+            public void checkClientTrusted(X509Certificate[] chain,
+                                           String authType) throws CertificateException {
+            }
+
+
+            public void checkServerTrusted(X509Certificate[] chain,
+                                           String authType) throws CertificateException {
+            }
+
+        };
+
+
+        try {
+            SSLContext mSSLContext = SSLContext.getInstance("TLS");
+            mSSLContext.init(null, new TrustManager[]{mTrustManager}, new SecureRandom());
+            HttpsURLConnection.setDefaultSSLSocketFactory(mSSLContext.getSocketFactory());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+    }
 
 }
