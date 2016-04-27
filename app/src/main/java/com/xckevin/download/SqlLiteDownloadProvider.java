@@ -9,9 +9,12 @@ import android.content.ContentValues;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.text.TextUtils;
+import android.util.Log;
 
 
 public class SqlLiteDownloadProvider implements DownloadProvider {
+
+	private static final String TAG = "AndroidDownloader_SLDP";
 	
 	private static SqlLiteDownloadProvider instance;
 	
@@ -23,20 +26,27 @@ public class SqlLiteDownloadProvider implements DownloadProvider {
 	
 	private SqlLiteDownloadProvider(DownloadManager manager) {
 		this.manager = manager;
+
 		File dbFile = new File(manager.getConfig().getDownloadSavePath(), "download.db");
-		if(dbFile.exists()) {
+		Log.d(TAG, "check " + dbFile.getAbsolutePath());
+		if(dbFile.isFile()) {
 			db = SQLiteDatabase.openDatabase(dbFile.getPath(), null, SQLiteDatabase.OPEN_READWRITE);
+			Log.d(TAG, dbFile.getAbsolutePath() + " exist. Reused");
 		} else {
 			if(!dbFile.getParentFile().isDirectory()) {
 				dbFile.getParentFile().mkdirs();
 			}
 			try {
 				dbFile.createNewFile();
+				Log.d(TAG, dbFile.getAbsolutePath() + " created");
 				db = SQLiteDatabase.openOrCreateDatabase(dbFile, null);
 			} catch (IOException e) {
 				e.printStackTrace();
-				throw new IllegalAccessError("cannot create database file of path: " + dbFile.getAbsolutePath());
+				Log.d(TAG, "Can not create " + dbFile.getAbsolutePath() + "? Try to open directly.");
+				//throw new IllegalAccessError("cannot create database file of path: " + dbFile.getAbsolutePath());
+				db = SQLiteDatabase.openDatabase(dbFile.getPath(), null, SQLiteDatabase.OPEN_READWRITE);
 			}
+
 		}
 		
 		createTables();
