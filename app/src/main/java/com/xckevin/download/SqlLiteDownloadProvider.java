@@ -1,15 +1,16 @@
 package com.xckevin.download;
 
+import android.content.ContentValues;
+import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteException;
+import android.text.TextUtils;
+import android.util.Log;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-
-import android.content.ContentValues;
-import android.database.Cursor;
-import android.database.sqlite.SQLiteDatabase;
-import android.text.TextUtils;
-import android.util.Log;
 
 
 public class SqlLiteDownloadProvider implements DownloadProvider {
@@ -26,31 +27,78 @@ public class SqlLiteDownloadProvider implements DownloadProvider {
 	
 	private SqlLiteDownloadProvider(DownloadManager manager) {
 		this.manager = manager;
-
-		File dbFile = new File(manager.getConfig().getDownloadSavePath(), "download.db");
-		Log.d(TAG, "check " + dbFile.getAbsolutePath());
-		if(dbFile.isFile()) {
-			db = SQLiteDatabase.openDatabase(dbFile.getPath(), null, SQLiteDatabase.OPEN_READWRITE);
-			Log.d(TAG, dbFile.getAbsolutePath() + " exist. Reused");
-		} else {
-			if(!dbFile.getParentFile().isDirectory()) {
-				dbFile.getParentFile().mkdirs();
-			}
-			try {
-				dbFile.createNewFile();
-				Log.d(TAG, dbFile.getAbsolutePath() + " created");
-				db = SQLiteDatabase.openOrCreateDatabase(dbFile, null);
-			} catch (IOException e) {
-				e.printStackTrace();
-				Log.d(TAG, "Can not create " + dbFile.getAbsolutePath() + "? Try to open directly.");
-				//throw new IllegalAccessError("cannot create database file of path: " + dbFile.getAbsolutePath());
-				db = SQLiteDatabase.openDatabase(dbFile.getPath(), null, SQLiteDatabase.OPEN_READWRITE);
-			}
-
-		}
-		
+		createSQLFile(new File(manager.getConfig().getDownloadSavePath(), "download.db"));
 		createTables();
 	}
+
+	private void createSQLFile(File dbFile){
+		Log.d(TAG, "check " + dbFile.getAbsolutePath());
+
+		// *** check parent directory exist ***
+		File dbFileDir = dbFile.getParentFile();
+		if (!dbFileDir.isDirectory()){
+			Log.d(TAG, dbFileDir.getPath() + " not exist. Try to create it");
+			if (dbFileDir.mkdirs()) {
+				dbFileDir.setWritable(true, false);
+				dbFileDir.setReadable(true, false);
+			} else {
+				Log.d(TAG, "Can not create " + dbFileDir.getAbsolutePath());
+			}
+		}
+
+		// *** open dbFile ***
+		try {
+			db = SQLiteDatabase.openOrCreateDatabase(dbFile.getPath(), null);
+		} catch (SQLiteException e) {
+			Log.d(TAG, "Can not open database " + dbFile.getPath() + ". Try to create it.");
+
+			if (dbFile.delete()){
+				Log.d(TAG, "delete " +dbFile.getAbsolutePath() + "success");
+			};
+
+			try {
+				Log.d(TAG, dbFile.getAbsolutePath() + " creating");
+				dbFile.createNewFile();
+				dbFile.setWritable(true,false);
+				dbFile.setReadable(true,false);
+				Log.d(TAG, dbFile.getAbsolutePath() + " created");
+			} catch (IOException e1) {
+				e1.printStackTrace();
+				return;
+			}
+
+			try {
+				db = SQLiteDatabase.openOrCreateDatabase(dbFile.getPath(), null);
+			} catch (SQLiteException e2) {
+				e2.printStackTrace();
+			}
+		}
+
+
+//		if(dbFile.isFile()) {
+//			Log.d(TAG, dbFile.getAbsolutePath() + " exist. Reused");
+//			db = SQLiteDatabase.openDatabase(dbFile.getPath(), null, SQLiteDatabase.OPEN_READWRITE);
+//
+//		} else {
+//			try {
+//				if (dbFile.delete()){
+//					Log.d(TAG, "delete " +dbFile.getAbsolutePath() + "success");
+//				};
+//				dbFile.createNewFile();
+//				dbFile.setWritable(true,false);
+//				dbFile.setReadable(true,false);
+//				Log.d(TAG, dbFile.getAbsolutePath() + " created");
+//				db = SQLiteDatabase.openOrCreateDatabase(dbFile, null);
+//			} catch (IOException e) {
+//				e.printStackTrace();
+//				Log.d(TAG, "Can not create " + dbFile.getAbsolutePath() + "? Try delete parent dir and create again.");
+//				//throw new IllegalAccessError("cannot create database file of path: " + dbFile.getAbsolutePath());
+//				db = SQLiteDatabase.openDatabase(dbFile.getPath(), null, SQLiteDatabase.OPEN_READWRITE);
+//			}
+//
+//		}
+	}
+
 	
 	public static synchronized SqlLiteDownloadProvider getInstance(DownloadManager manager) {
 		if(instance == null) {
