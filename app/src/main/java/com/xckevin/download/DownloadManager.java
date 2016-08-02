@@ -1,16 +1,16 @@
 package com.xckevin.download;
 
+import android.content.Context;
+import android.os.Handler;
+import android.text.TextUtils;
+import android.util.Log;
+
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-
-import android.content.Context;
-import android.os.Handler;
-import android.text.TextUtils;
-import android.util.Log;
 
 public class DownloadManager {
 
@@ -98,7 +98,9 @@ public class DownloadManager {
 		task.setStatus(DownloadTask.STATUS_PENDDING);
 		DownloadTask historyTask = provider.findDownloadTaskById(task.getId());
 		if(historyTask == null) {
-			task.setId(config.getCreator().createId(task));
+			if (task.getId().isEmpty()) {
+				task.setId(config.getCreator().createId(task));
+			}
 			provider.saveDownloadTask(task);
 		} else {
 			provider.updateDownloadTask(task);

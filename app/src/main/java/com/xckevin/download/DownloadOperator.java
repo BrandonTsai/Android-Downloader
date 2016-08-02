@@ -1,24 +1,21 @@
 package com.xckevin.download;
 
+import android.text.TextUtils;
+import android.util.Log;
+import android.webkit.URLUtil;
+
+import com.xckevin.download.util.FileUtil;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
 import java.net.ConnectException;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
-
-import android.app.Notification;
-import android.app.NotificationManager;
-import android.content.Context;
-import android.support.v4.app.NotificationCompat;
-import android.text.TextUtils;
-import android.util.Log;
-
-import com.xckevin.androiddownloadcomponent.R;
-import com.xckevin.download.util.FileUtil;
 
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
@@ -77,13 +74,17 @@ public class DownloadOperator implements Runnable {
         do {
             trustAllHosts();
             RandomAccessFile raf = null;
-            HttpsURLConnection conn = null;
+            HttpURLConnection conn = null;
             InputStream is = null;
             try {
-                conn = initConnection();
+
+                if (URLUtil.isHttpsUrl(task.getUrl())) {
+                    conn = initHttpsConnection();
+                } else {
+                    conn = initHttpConnection();
+                }
                 conn.connect();
                 raf = buildDownloadFile();
-
 
                 task.setDownloadSavePath(filePath);
                 if (task.getDownloadTotalSize() == 0) {
@@ -94,7 +95,6 @@ public class DownloadOperator implements Runnable {
                 }
                 task.setStatus(DownloadTask.STATUS_RUNNING);
                 manager.onDownloadStarted(task);
-
 
                 is = conn.getInputStream();
 
@@ -177,9 +177,9 @@ public class DownloadOperator implements Runnable {
         if (!file.getParentFile().isDirectory() && !file.getParentFile().mkdirs()) {
             throw new IOException("cannot create download folder");
         }
-        if (file.exists()) {
-
-        }
+//        if (file.exists()) {
+//
+//        }
         filePath = file.getAbsolutePath();
         RandomAccessFile raf = new RandomAccessFile(file, "rw");
         if (task.getDownloadFinishedSize() != 0) {
@@ -189,16 +189,27 @@ public class DownloadOperator implements Runnable {
         return raf;
     }
 
-    private HttpsURLConnection initConnection() throws IOException {
+
+    private HttpsURLConnection initHttpsConnection() throws IOException {
         HttpsURLConnection conn = (HttpsURLConnection) new URL(task.getUrl()).openConnection();
         conn.setHostnameVerifier(org.apache.http.conn.ssl.SSLSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
-		//conn.setConnectTimeout(60000);
+//		conn.setConnectTimeout(60000);
 		//conn.setReadTimeout(60000);
         conn.setUseCaches(true);
         if (task.getDownloadFinishedSize() != 0) {
             conn.setRequestProperty("Range", "bytes=" + task.getDownloadFinishedSize() + "-");
         }
+        return conn;
+    }
 
+    private HttpURLConnection initHttpConnection() throws IOException {
+        HttpURLConnection conn = (HttpURLConnection) new URL(task.getUrl()).openConnection();
+//        conn.setConnectTimeout(60000);
+        //conn.setReadTimeout(60000);
+        conn.setUseCaches(true);
+        if (task.getDownloadFinishedSize() != 0) {
+            conn.setRequestProperty("Range", "bytes=" + task.getDownloadFinishedSize() + "-");
+        }
         return conn;
     }
 
